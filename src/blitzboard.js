@@ -104,8 +104,11 @@ module.exports = class Blitzboard {
     this.hoveredEdges = new Set();
     this.selectedNodes = new Set();
     this.selectedEdges = new Set();
-    this.clientIsMacLike = /(Mac|iPhone|iPod|iPad)/i.test( navigator.userAgentData.platform);
-
+    this.clientIsMacLike =
+      navigator.userAgentData ?
+        /(Mac|iPhone|iPod|iPad)/i.test( navigator.userAgentData.platform) :
+        navigator.userAgent?.includes('Mac');
+    
     this.staticLayoutMode = true;
 
     this.container.style.position = 'absolute';
