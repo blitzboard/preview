@@ -104,11 +104,12 @@ module.exports = class Blitzboard {
     this.hoveredEdges = new Set();
     this.selectedNodes = new Set();
     this.selectedEdges = new Set();
+    this.autoViewUpdate = true;
     this.clientIsMacLike =
       navigator.userAgentData ?
         /(Mac|iPhone|iPod|iPad)/i.test( navigator.userAgentData.platform) :
         navigator.userAgent?.includes('Mac');
-    
+
     this.staticLayoutMode = true;
 
     this.container.style.position = 'absolute';
@@ -194,6 +195,7 @@ module.exports = class Blitzboard {
     this.onEdgeAdded = [];
     this.onNodeFocused = [];
     this.onEdgeFocused = [];
+    this.onVisibleBoundsChanged = [];
     this.onUpdated = [];
     this.onClear = [];
     this.beforeParse = [];
@@ -339,14 +341,29 @@ module.exports = class Blitzboard {
           html: elem.object._title
         }
       },
+      onInteractionStateChange: (interactionState) => {
+        let interacting = Object.values(interactionState).filter(state => state).length > 0;
+        if(interacting !== this.interacting)
+          this.combineLayers();
+        this.interacting = interacting;
+      },
       onViewStateChange: (viewState) => {
         const viewport = blitzboard.network.getViewports()[0];
         if(viewport) {
           const [left, top] = viewport.unproject([0, 0]);
           const [right, bottom] = viewport.unproject([viewport.width, viewport.height]);
           this.visibleBounds = {
-            left, top, bottom, right
+            left,
+            top,
+            bottom,
+            right,
+            width: right - left,
+            height: bottom - top
           };
+
+          for(let callback of this.onVisibleBoundsChanged) {
+            callback(this.visibleBounds);
+          }
         }
         this.viewState = viewState.viewState;
         this.updateThumbnailLayer();
@@ -1100,10 +1117,16 @@ module.exports = class Blitzboard {
         zoom: 3
       };
     } else {
-      let rate = 0.9 * Math.min(this.container.clientWidth / (this.maxX - this.minX), this.container.clientHeight / (this.maxY - this.minY));
+      let {left, top, right, bottom} = this.config.initialView;
+      console.log(this.config.initialView);
+      left = left || this.minX;
+      right = right || this.maxX;
+      top = top || this.minY;
+      bottom = bottom || this.minY;
+      let rate = 0.9 * Math.min(this.container.clientWidth / (right - left), this.container.clientHeight / (bottom - top));
 
       return {
-        target: [(this.minX + this.maxX) / 2, (this.minY + this.maxY) / 2],
+        target: [(left + right) / 2, (top + bottom) / 2],
         zoom: Math.log(rate) / Math.log(2)
       };
     }
@@ -1596,51 +1619,45 @@ module.exports = class Blitzboard {
         },
         pickable: true,
       });
-
-      this.layers = [
-        this.tileLayer,
-        this.edgeLayer,
-        this.edgeTextLayer,
-        this.nodeLayer,
-        // this.edgeArrowLayer,
-        this.nodeTextLayer,
-        this.highlightedNodeTextLayer,
-        this.iconLayer,
-        ...this.thumbnailLayers
-      ];
-
-      this.network.setProps({
-        layers: this.layers,
-      });
-    } else {
-      this.layers = [
-        this.edgeLayer,
-        this.edgeTextLayer,
-        this.nodeLayer,
-        // edgeArrowLayer,
-        this.nodeTextLayer,
-        this.highlightedNodeTextLayer,
-        this.iconLayer,
-        ...this.thumbnailLayers
-      ]
-      this.network.setProps({
-        layers: this.layers
-      });
     }
+    this.combineLayers();
+  }
+
+  combineLayers() {
+    if(!this.graph)
+      return;
+    this.layers = this.config.layout === 'map' ? [this.tileLayer] : [];
+    this.layers.push(this.edgeLayer);
+    this.layers.push(this.edgeTextLayer);
+    this.layers = this.layers.concat([
+      this.nodeLayer,
+      // edgeArrowLayer,
+      this.nodeTextLayer,
+      this.highlightedNodeTextLayer,
+      this.iconLayer,
+      ...this.thumbnailLayers
+    ])
+
+    this.network.setProps({
+      layers: this.layers,
+    });
   }
 
   updateThumbnailLayer() {
+    const MAX_LAYER_NUM = 500;
     // TODO: Create individual layers for each node may lead to performance problem
     this.thumbnailLayers = this.nodeData.map((n) => {
       if(n.imageURL && blitzboard.visibleBounds && blitzboard.viewState?.zoom >= Blitzboard.zoomLevelToLoadImage) {
         let bounds =  [ n.x + n._size / Blitzboard.defaultNodeSize, n.y + n._size / Blitzboard.defaultNodeSize,
           n.x - n._size / Blitzboard.defaultNodeSize,
           n.y - n._size / Blitzboard.defaultNodeSize];
+        let visibleWidth = blitzboard.visibleBounds.right - blitzboard.visibleBounds.left;
+        let visibleHeight = blitzboard.visibleBounds.bottom - blitzboard.visibleBounds.top;
         let visible = 
-          blitzboard.visibleBounds.left <= n.x &&
-          blitzboard.visibleBounds.top <= n.y &&
-          n.x <= blitzboard.visibleBounds.right &&
-          n.y <= blitzboard.visibleBounds.bottom;
+          blitzboard.visibleBounds.left - visibleWidth <= n.x &&
+          blitzboard.visibleBounds.top - visibleHeight <= n.y &&
+          n.x <= blitzboard.visibleBounds.right + visibleWidth &&
+          n.y <= blitzboard.visibleBounds.bottom + visibleHeight;
         if(visible) {
           return new DeckGLLayers.BitmapLayer({
             id: 'bitmap-layer-' + n.id,
@@ -1650,7 +1667,7 @@ module.exports = class Blitzboard {
         }
       }
       return null;
-    }).filter(n => n !== null);
+    }).filter(n => n !== null).slice(0, MAX_LAYER_NUM);
   }
 
   updateViews() {
@@ -2107,12 +2124,13 @@ module.exports = class Blitzboard {
 
     this.nodeData = Object.values(this.nodeDataSet);
     this.updateLayers();
-    this.updateViews();
+    if(this.autoViewUpdate)
+      this.updateViews();
 
     this.clusterSCC();
 
     this.container.addEventListener('keydown', (e) => {
-      if(e.code === "Digit0") {
+      if(e.code === "Digit0" && e.target !== this.searchInput) {
         blitzboard.fit();
         e.preventDefault();
       }
