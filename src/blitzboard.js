@@ -1117,8 +1117,11 @@ module.exports = class Blitzboard {
         zoom: 3
       };
     } else {
-      let {left, top, right, bottom} = this.config.initialView;
-      console.log(this.config.initialView);
+      let left, top, right, bottom;
+      if(this.config.initialView)
+        ({left, top, right, bottom} = this.config.initialView);
+
+
       left = left || this.minX;
       right = right || this.maxX;
       top = top || this.minY;
