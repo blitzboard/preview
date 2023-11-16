@@ -43,20 +43,26 @@
     }
 }
 
+#blitzboard-search-bar-div{
+    right: 12px;
+}
+
+
+
 #blitzboard-search-button {
-    background:#fff url("https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/search/default/48px.svg") no-repeat 12px center;
+    background:rgba(255, 255, 255, 0) url("https://fonts.gstatic.com/s/i/short-term/release/materialsymbolsoutlined/search/default/48px.svg") no-repeat 12px center;
     background-size: 20px 20px;
     width: 40px;
     height: 40px;
     left: 0px;
     outline: none;
-    box-shadow: 0 2px rgba(6,0,1,.26);
     cursor: pointer;
     position: absolute;
     transition: all 0.5s;
 }
 
 #blitzboard-search-input {
+    background-color: rgba(255, 255, 255, 0);
     -webkit-appearance:none;
     margin-left: 40px;
     width: 240px;
@@ -64,7 +70,7 @@
     padding: 0px;
     border: none;
     outline: none;
-    box-shadow: 0 2px rgba(6,0,1,.26);
+    box-shadow: 0 1px #151515;
     position: absolute;
 }
 
